@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ playlist.title }}{% endblock %}
+
+{% block content %}
+  <h1>{{ playlist.title }}</h1>
+
+  {% for video in playlist.videos %}
+    <div class="card my-4">
+      <div class="card-body">
+        <h5 class="card-title">{{ video.title }}</h5>
+        <p><strong>Duração:</strong> {{ (video.duration // 60)|int }} min {{ (video.duration % 60)|int }} s</p>
+        <p><strong>Descrição:</strong> {{ video.description }}</p>
+        <p><strong>Transcrição:</strong></p>
+        {% if video.transcription %}
+        <p id="transcription-{{ video.video_id }}">
+            {{ video.transcription[:300] }}<span id="dots-{{ video.video_id }}">...</span><span id="more-{{ video.video_id }}" style="display: none;">{{ video.transcription[300:] }}</span>
+        </p>
+        <button onclick="toggleTranscription('{{ video.video_id }}')" class="btn btn-link p-0">
+            Ver mais
+        </button>
+        {% else %}
+        <p>(sem transcrição)</p>
+        {% endif %}
+
+
+        <h6>Comentários:</h6>
+        <ul class="list-unstyled">
+          {% for comment in video.comments %}
+            <li class="mb-2">
+              <strong>{{ comment.author }}</strong>: {{ comment.text }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endfor %}
+
+  <a href="{{ url_for('canal', channel_id=canal.channel_id) }}" class="btn btn-secondary">← Voltar</a>
+{% endblock %}

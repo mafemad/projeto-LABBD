@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ canal.title }}{% endblock %}
+
+{% block content %}
+  <h1>{{ canal.title }}</h1>
+  <p class="text-muted">{{ canal.description }}</p>
+
+  <h2 class="mt-4">Playlists:</h2>
+  <ul class="list-group">
+    {% for playlist in canal.playlists %}
+      <li class="list-group-item">
+        <a href="{{ url_for('playlist', channel_id=canal.channel_id, playlist_id=playlist.playlist_id) }}">
+          {{ playlist.title }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">← Voltar</a>
+{% endblock %}
