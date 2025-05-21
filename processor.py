@@ -1,41 +1,76 @@
-# processor.py
 from youtool import YouTube
 from pymongo import MongoClient
 from webvtt import WebVTT
 import tempfile
 import os
 import re
+from difflib import SequenceMatcher
 from dotenv import load_dotenv
+import nltk
+from nltk.tokenize import sent_tokenize
 
 load_dotenv()
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab')
 
-def clean_redundant_lines(lines):
+
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def clean_redundant_lines_advanced(lines, similarity_threshold=0.85):
     cleaned = []
-    last_line = ""
+    last_sentence = ""
 
+    # Junta blocos quebrados e remove repetições internas
+    buffer = ""
     for line in lines:
-        line = line.strip()
+        line = re.sub(r'\s+', ' ', line.strip())
 
-        if line == last_line:
-            continue
-        if len(line) < 5:
+        if not line or len(line) < 5:
             continue
 
-        words = line.split()
-        dedup = []
-        for i, word in enumerate(words):
-            if i == 0 or word != words[i - 1]:
-                dedup.append(word)
-        cleaned_line = ' '.join(dedup)
+        # Junta em buffer, pois VTT costuma quebrar no meio de frases
+        if buffer:
+            buffer += " " + line
+        else:
+            buffer = line
 
-        # Evita linhas muito semelhantes à anterior
-        if cleaned_line.lower() == last_line.lower():
-            continue
+        if re.search(r'[.!?…]$', line):  # Considera fim de frase
+            sentences = sent_tokenize(buffer)
 
-        cleaned.append(cleaned_line)
-        last_line = cleaned_line
+            for s in sentences:
+                s = s.strip()
 
-    return cleaned
+                # Remove repetições de palavras consecutivas
+                words = s.split()
+                dedup = [words[0]] if words else []
+                for word in words[1:]:
+                    if word != dedup[-1]:
+                        dedup.append(word)
+                sentence = ' '.join(dedup)
+
+                # Remove frases muito similares à anterior
+                if last_sentence and similar(sentence.lower(), last_sentence.lower()) > similarity_threshold:
+                    continue
+
+                cleaned.append(sentence)
+                last_sentence = sentence
+
+            buffer = ""
+
+    # Trata frase restante no buffer
+    if buffer:
+        for s in sent_tokenize(buffer):
+            s = s.strip()
+            if len(s) > 5 and (not last_sentence or similar(s.lower(), last_sentence.lower()) < similarity_threshold):
+                cleaned.append(s)
+
+    final_text = ' '.join(cleaned)
+    final_text = re.sub(r'\s([?.!"])', r'\1', final_text)
+
+    return final_text.strip()
+
 
 def download_and_clean_transcription(yt, video_id):
     try:
@@ -45,19 +80,14 @@ def download_and_clean_transcription(yt, video_id):
                 vtt_path = downloaded["filename"]
                 vtt = WebVTT().read(vtt_path)
 
-                # Extrair linhas limpas
                 raw_lines = [caption.text.strip() for caption in vtt if caption.text.strip()]
-                lines = clean_redundant_lines(raw_lines)
-
-                # Junta com pontuação básica e quebra de linha lógica
-                clean_text = '. '.join(lines)
-                clean_text = re.sub(r'\s+', ' ', clean_text)  # normaliza espaços
-                clean_text = re.sub(r'\.\s*\.', '.', clean_text)  # evita '..'
-                return clean_text.strip()
+                clean_text = clean_redundant_lines_advanced(raw_lines)
+                return clean_text
     except Exception as e:
         print(f"Erro ao processar transcrição de {video_id}: {e}")
         return ""
     return ""
+
 
 def process_channel(channel_url):
     api_keys = [os.getenv("YOUTUBE_API_KEY")]
@@ -125,9 +155,15 @@ def process_channel(channel_url):
 
             playlist_doc["videos"].append(video_doc)
 
+        # Remove qualquer playlist com mesmo ID
+        canais_col.update_one(
+            {"channel_id": channel_id},
+            {"$pull": {"playlists": {"playlist_id": playlist["id"]}}}
+        )
+
+        # Insere a versão nova e atualizada da playlist
         canais_col.update_one(
             {"channel_id": channel_id},
             {"$push": {"playlists": playlist_doc}}
         )
-
     return channel_id
