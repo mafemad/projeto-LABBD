@@ -167,3 +167,112 @@ def process_channel(channel_url):
             {"$push": {"playlists": playlist_doc}}
         )
     return channel_id
+
+
+def process_playlist(playlist_id):
+    api_keys = [os.getenv("YOUTUBE_API_KEY")]
+    yt = YouTube(api_keys, disable_ipv6=True)
+
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    client = MongoClient(mongo_uri)
+    db = client.youtube_data
+    canais_col = db.canais
+
+    videos = list(yt.playlist_videos(playlist_id))
+    video_ids = [video['id'] for video in videos]
+    videos_full = list(yt.videos_infos(video_ids))
+
+    playlist_info = yt.playlist_info(playlist_id)
+
+    playlist_doc = {
+        "playlist_id": playlist_id,
+        "title": playlist_info.get("title", ""),
+        "videos": []
+    }
+
+    for video in videos_full:
+        video_id = video['id']
+
+        video_doc = {
+            "video_id": video_id,
+            "title": video.get("title", ""),
+            "duration": video.get("duration", ""),
+            "description": video.get("description", ""),
+            "comments": [],
+        }
+
+        transcription_text = download_and_clean_transcription(yt, video_id)
+        if transcription_text:
+            video_doc["transcription"] = transcription_text
+
+        try:
+            comments = list(yt.video_comments(video_id))
+            for comment in comments[:5]:
+                video_doc["comments"].append({
+                    "author": comment.get("author_name", "Anônimo"),
+                    "text": comment.get("text", "[sem conteúdo]"),
+                    "like_count": comment.get("like_count", 0),
+                    "published_at": comment.get("published_at", "")
+                })
+        except:
+            pass
+
+        playlist_doc["videos"].append(video_doc)
+
+    # Associa à collection com base no canal
+    channel_id = playlist_info.get("channel_id")
+    if channel_id:
+        canais_col.update_one(
+            {"channel_id": channel_id},
+            {"$pull": {"playlists": {"playlist_id": playlist_id}}}
+        )
+        canais_col.update_one(
+            {"channel_id": channel_id},
+            {"$push": {"playlists": playlist_doc}},
+            upsert=True
+        )
+    return playlist_doc
+
+
+def process_video(video_id):
+    api_keys = [os.getenv("YOUTUBE_API_KEY")]
+    yt = YouTube(api_keys, disable_ipv6=True)
+
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    client = MongoClient(mongo_uri)
+    db = client.youtube_data
+    videos_col = db.videos
+
+    video_info = yt.video_info(video_id)
+
+    video_doc = {
+        "video_id": video_id,
+        "title": video_info.get("title", ""),
+        "duration": video_info.get("duration", ""),
+        "description": video_info.get("description", ""),
+        "comments": [],
+    }
+
+    transcription_text = download_and_clean_transcription(yt, video_id)
+    if transcription_text:
+        video_doc["transcription"] = transcription_text
+
+    try:
+        comments = list(yt.video_comments(video_id))
+        for comment in comments[:5]:
+            video_doc["comments"].append({
+                "author": comment.get("author_name", "Anônimo"),
+                "text": comment.get("text", "[sem conteúdo]"),
+                "like_count": comment.get("like_count", 0),
+                "published_at": comment.get("published_at", "")
+            })
+    except:
+        pass
+
+    videos_col.update_one(
+        {"video_id": video_id},
+        {"$set": video_doc},
+        upsert=True
+    )
+
+    return video_doc
