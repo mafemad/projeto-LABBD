@@ -11,30 +11,52 @@
         <h5 class="card-title">{{ video.title }}</h5>
         <p><strong>Duração:</strong> {{ (video.duration // 60)|int }} min {{ (video.duration % 60)|int }} s</p>
         <p><strong>Descrição:</strong> {{ video.description }}</p>
-        <p><strong>Transcrição:</strong></p>
-        {% if video.transcription %}
-        <p id="transcription-{{ video.video_id }}">
-            {{ video.transcription[:300] }}<span id="dots-{{ video.video_id }}">...</span><span id="more-{{ video.video_id }}" style="display: none;">{{ video.transcription[300:] }}</span>
-        </p>
-        <button onclick="toggleTranscription('{{ video.video_id }}')" class="btn btn-link p-0">
-            Ver mais
-        </button>
+
+        {% if video.comments and video.comments|length > 0 %}
+          <button class="btn btn-sm btn-outline-primary mb-2" type="button"
+                  onclick="toggleSection('comments-{{ loop.index0 }}')">
+            Mostrar comentários ({{ video.comments|length }})
+          </button>
+
+          <ul id="comments-{{ loop.index0 }}" class="list-unstyled d-none">
+            {% for comment in video.comments %}
+              <li class="mb-3 border-start ps-2">
+                <strong>{{ comment.author }}</strong>: {{ comment.text }}
+                <br><small>👍 {{ comment.like_count }} curtidas</small>
+
+                {% if comment.replies and comment.replies|length > 0 %}
+                  <br>
+                  <button class="btn btn-sm btn-outline-secondary mt-1" type="button"
+                          onclick="toggleSection('replies-{{ loop.index0 }}-{{ loop.parent.loop.index0 }}')">
+                    Mostrar respostas ({{ comment.replies|length }})
+                  </button>
+                  <ul id="replies-{{ loop.index0 }}-{{ loop.parent.loop.index0 }}" class="mt-2 ms-3 list-unstyled d-none">
+                    {% for reply in comment.replies %}
+                      <li>
+                        <strong>{{ reply.author }}</strong>: {{ reply.text }}
+                        <br><small>👍 {{ reply.like_count }} curtidas</small>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
         {% else %}
-        <p>(sem transcrição)</p>
+          <p class="text-muted">Sem comentários disponíveis.</p>
         {% endif %}
-
-
-        <h6>Comentários:</h6>
-        <ul class="list-unstyled">
-          {% for comment in video.comments %}
-            <li class="mb-2">
-              <strong>{{ comment.author }}</strong>: {{ comment.text }}
-            </li>
-          {% endfor %}
-        </ul>
       </div>
     </div>
   {% endfor %}
 
   <a href="{{ url_for('canal', channel_id=canal.channel_id) }}" class="btn btn-secondary">← Voltar</a>
+
+  <script>
+    function toggleSection(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.toggle('d-none');
+      }
+    }
+  </script>
 {% endblock %}
